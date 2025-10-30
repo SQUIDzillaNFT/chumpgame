@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>Chump Attack</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header id="titleBar"><h1>Chump Attack</h1></header>
+
+    <div id="controlBar">
+      <div class="actions">
+        <button id="actionBtn">Start</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>Score:</span> <strong id="score">0</strong></div>
+        <div class="stat"><span>Wave:</span> <strong id="wave">1</strong></div>
+        <div class="stat"><span>Health:</span> <strong id="health">100</strong></div>
+      </div>
+    </div>
+
+    <div id="stage">
+      <canvas id="game" width="360" height="640"></canvas>
+      <div id="gameOver" class="hidden">
+        <h2>Game Over!</h2>
+        <p>Score: <span id="finalScore">0</span></p>
+      </div>
+    </div>
+
+    
+
+    
+
+    <script src="src/game.js"></script>
+  </body>
+  </html>
+
+
