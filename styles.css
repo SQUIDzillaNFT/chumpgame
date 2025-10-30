@@ -193,8 +193,7 @@ body {
 
 /* Ensure good fit in phone landscape: make canvas fill available viewport */
 @media (orientation: landscape) and (max-height: 520px) {
-  #titleBar { margin-top: 4px; margin-bottom: 4px; }
-  #titleBar h1 { font-size: 20px; }
+  #titleBar { display: none; }
   #controlBar { width: calc(100vw - 24px); margin-bottom: 6px; }
   #game { width: calc(100vw - 24px); height: calc(100vh - 100px); }
 }
