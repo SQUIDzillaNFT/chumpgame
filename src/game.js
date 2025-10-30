@@ -12,8 +12,8 @@
   };
 
   // Assets (optional)
-  const assets = { bullet: null, bulletReady: false };
-  const sfx = { map: {}, lastShotAt: 0, ctx: null, unlocked: false };
+  const assets = { bullet: null, bulletReady: false, enemySprites: {}, chump: null };
+  const sfx = { map: {}, pools: {}, maxPool: 8, lastShotAt: 0, ctx: null, unlocked: false };
   function loadAudioTry(paths) {
     for (const p of paths) {
       const a = new Audio(); a.preload = 'auto'; a.src = p;
@@ -61,9 +61,37 @@
       sfx.unlocked = true;
     } catch {}
   }
+  // Re-unlock audio when returning to the tab/app
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      try { if (sfx.ctx && sfx.ctx.state === 'suspended') sfx.ctx.resume().catch(()=>{}); } catch {}
+      // poke a muted sound to satisfy some policies
+      if (sfx.unlocked) return;
+      const a = sfx.map.shoot || sfx.map.powerup || sfx.map.explosion;
+      if (a) { const i = a.cloneNode(); i.volume = 0; i.play().catch(()=>{}); }
+      sfx.unlocked = true;
+    }
+  });
   const warnedMissing = new Set();
+  function getPooledAudio(name) {
+    const base = sfx.map[name]; if (!base) return null;
+    let pool = sfx.pools[name];
+    if (!pool) { pool = []; sfx.pools[name] = pool; }
+    // find a free instance
+    for (const inst of pool) {
+      if (inst.ended || inst.paused) { try { inst.currentTime = 0; } catch {} return inst; }
+    }
+    // create new if under cap
+    if (pool.length < sfx.maxPool) {
+      const inst = base.cloneNode();
+      pool.push(inst);
+      return inst;
+    }
+    // fallback: reuse first
+    return pool[0];
+  }
   function playSfx(name, { volume = 0.8, rateLimitMs = 0 } = {}) {
-    const a = sfx.map[name];
+    const a = getPooledAudio(name);
     if (!a) { if (!warnedMissing.has(name)) { warnedMissing.add(name); console.warn(`[SFX] Missing sound for`, name); } return; }
     if (rateLimitMs) {
       const now = performance.now();
@@ -71,9 +99,9 @@
       if (name === 'shoot') sfx.lastShotAt = now;
     }
     try {
-      const inst = a.cloneNode();
-      inst.volume = volume;
-      inst.play().catch(() => {});
+      a.volume = volume;
+      try { a.currentTime = 0; } catch {}
+      a.play().catch(() => {});
     } catch {}
   }
   function loadAssets() {
@@ -81,6 +109,17 @@
     img.src = 'public/bullet.png';
     img.onload = () => { assets.bullet = img; assets.bulletReady = true; };
     img.onerror = () => { /* fallback to vector bullet */ };
+    const chump = new Image();
+    chump.src = 'public/chumphead.png';
+    chump.onload = () => { assets.chump = chump; };
+    chump.onerror = () => { /* fallback to vector monkey */ };
+    // Enemy sprites (optional)
+    ['enemy1.png','enemy2.png','enemy3.png'].forEach((fname) => {
+      const e = new Image();
+      e.src = `public/${fname}`;
+      e.onload = () => { assets.enemySprites[fname] = e; };
+      e.onerror = () => {};
+    });
     loadSfx();
     initAudioContext();
   }
@@ -236,20 +275,28 @@
       ctx.fillStyle = '#8d6e63'; ctx.fillRect(this.r + 16 - 3, -4, 3, 8);
       ctx.restore();
 
-      // tail
-      ctx.strokeStyle = body; ctx.lineWidth = 4; ctx.beginPath();
-      ctx.moveTo(-this.r*0.2, this.r*0.2);
-      ctx.quadraticCurveTo(-this.r*0.8, 0, -this.r*0.3, -this.r*0.6);
-      ctx.stroke();
-      // head
-      ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0, 0, this.r, 0, Math.PI*2); ctx.fill();
-      // ears
-      ctx.beginPath(); ctx.arc(-this.r*0.8, -this.r*0.4, this.r*0.35, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(this.r*0.8, -this.r*0.4, this.r*0.35, 0, Math.PI*2); ctx.fill();
-      // face
-      ctx.fillStyle = face; ctx.beginPath(); ctx.arc(0, this.r*0.2, this.r*0.7, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#0b1020';
-      ctx.beginPath(); ctx.arc(-this.r*0.25, -this.r*0.15, 2, 0, Math.PI*2); ctx.arc(this.r*0.25, -this.r*0.15, 2, 0, Math.PI*2); ctx.fill();
+      // Draw chump sprite if available, otherwise fallback vector monkey
+      if (assets.chump) {
+        const w = this.r * 2.5;
+        const aspect = assets.chump.height / assets.chump.width;
+        const h = w * aspect;
+        ctx.drawImage(assets.chump, -w/2, -h/2, w, h);
+      } else {
+        // tail
+        ctx.strokeStyle = body; ctx.lineWidth = 4; ctx.beginPath();
+        ctx.moveTo(-this.r*0.2, this.r*0.2);
+        ctx.quadraticCurveTo(-this.r*0.8, 0, -this.r*0.3, -this.r*0.6);
+        ctx.stroke();
+        // head
+        ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0, 0, this.r, 0, Math.PI*2); ctx.fill();
+        // ears
+        ctx.beginPath(); ctx.arc(-this.r*0.8, -this.r*0.4, this.r*0.35, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(this.r*0.8, -this.r*0.4, this.r*0.35, 0, Math.PI*2); ctx.fill();
+        // face
+        ctx.fillStyle = face; ctx.beginPath(); ctx.arc(0, this.r*0.2, this.r*0.7, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#0b1020';
+        ctx.beginPath(); ctx.arc(-this.r*0.25, -this.r*0.15, 2, 0, Math.PI*2); ctx.arc(this.r*0.25, -this.r*0.15, 2, 0, Math.PI*2); ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -294,40 +341,44 @@
       else if(e===2){ this.x=Math.random()*vw(); this.y=-m; }
       else { this.x=Math.random()*vw(); this.y=vh()+m; }
       this.s=speed; this.r=r * scale; this.hp=hp; this.flash=0;
-      this.kind = ['grunt','runner','tank'][Math.floor(Math.random()*3)];
+      const kinds = ['grunt','runner','tank'];
+      this.kind = kinds[Math.floor(Math.random()*kinds.length)];
+      // Choose sprite by kind mapping if available
+      const kindToFile = { grunt: 'enemy1.png', runner: 'enemy2.png', tank: 'enemy3.png' };
+      this.sprite = assets.enemySprites[kindToFile[this.kind]] || null;
+      this.angle = 0;
     }
-    update(dt){ const th = angle(this.x, this.y, game.player.x, game.player.y); this.x += Math.cos(th)*this.s*dt; this.y += Math.sin(th)*this.s*dt; if (this.flash>0) this.flash -= dt; }
+    update(dt){ const th = angle(this.x, this.y, game.player.x, game.player.y); this.x += Math.cos(th)*this.s*dt; this.y += Math.sin(th)*this.s*dt; this.angle = th; if (this.flash>0) this.flash -= dt; }
     draw(){
-      const base = this.flash>0 ? '#ffcdd2' : '#ff6b6b';
       ctx.save();
       ctx.translate(this.x, this.y);
       ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
-      if (this.kind === 'grunt') {
-        // square with eyes
-        const s = this.r * 1.6;
-        ctx.fillStyle = base;
-        ctx.fillRect(-s/2, -s/2, s, s);
-        ctx.fillStyle = '#0b1020';
-        ctx.fillRect(-s*0.15, -s*0.1, s*0.12, s*0.12);
-        ctx.fillRect(s*0.03, -s*0.1, s*0.12, s*0.12);
-      } else if (this.kind === 'runner') {
-        // triangle
-        const s = this.r * 2.0;
-        ctx.fillStyle = base;
-        ctx.beginPath();
-        ctx.moveTo(-s/2, s/2);
-        ctx.lineTo(s/2, s/2);
-        ctx.lineTo(0, -s/2);
-        ctx.closePath();
-        ctx.fill();
+      if (this.sprite) {
+        // Draw sprite scaled around radius; rotate toward player
+        ctx.rotate(this.angle);
+        const w = this.r * 2.4; // slightly bigger
+        const aspect = this.sprite.height / this.sprite.width;
+        const h = w * aspect;
+        ctx.drawImage(this.sprite, -w/2, -h/2, w, h);
       } else {
-        // tank: rounded rect with inner ring
-        const w = this.r * 2.2; const h = this.r * 2.0; const rr = Math.min(10, this.r*0.8);
-        ctx.fillStyle = base;
-        roundedRect(ctx, -w/2, -h/2, w, h, rr);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(0,0,this.r*0.8,0,Math.PI*2); ctx.stroke();
+        // Fallback vector styles
+        const base = this.flash>0 ? '#ffcdd2' : '#ff6b6b';
+        if (this.kind === 'grunt') {
+          const s = this.r * 1.6;
+          ctx.fillStyle = base;
+          ctx.fillRect(-s/2, -s/2, s, s);
+          ctx.fillStyle = '#0b1020';
+          ctx.fillRect(-s*0.15, -s*0.1, s*0.12, s*0.12);
+          ctx.fillRect(s*0.03, -s*0.1, s*0.12, s*0.12);
+        } else if (this.kind === 'runner') {
+          const s = this.r * 2.0;
+          ctx.fillStyle = base;
+          ctx.beginPath(); ctx.moveTo(-s/2, s/2); ctx.lineTo(s/2, s/2); ctx.lineTo(0, -s/2); ctx.closePath(); ctx.fill();
+        } else {
+          const w = this.r * 2.2; const h = this.r * 2.0; const rr = Math.min(10, this.r*0.8);
+          ctx.fillStyle = base; roundedRect(ctx, -w/2, -h/2, w, h, rr); ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0,0,this.r*0.8,0,Math.PI*2); ctx.stroke();
+        }
       }
       ctx.restore();
     }

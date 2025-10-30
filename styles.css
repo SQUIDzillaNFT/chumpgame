@@ -8,10 +8,13 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; }
+html, body { 
+  height: 100%; 
+  background: #1E40FF;
+}
 body {
   margin: 0;
-  background: var(--bg);
+  background: #1E40FF;
   color: var(--text);
   font-family: 'Rubik', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   display: grid;
@@ -45,7 +48,7 @@ body {
 #gameOver p { margin: 0; opacity: 0.9; }
 
 .stat span { opacity: 0.75; margin-right: 4px; }
-.stat strong { color: var(--accent); }
+.stat strong { color: #ffffff; }
 
 #overlay {
   position: fixed;
@@ -65,7 +68,15 @@ body {
 #overlay p { display: none; }
 
 #titleBar { margin-top: 8px; margin-bottom: 6px; text-align: center; }
-#titleBar h1 { margin: 0; font-size: 26px; letter-spacing: 0.5px; }
+#titleBar h1 { 
+  margin: 0; 
+  font-size: 32px; 
+  font-family: 'Bungee', cursive;
+  font-weight: 400;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
 
 #controlBar {
   display: flex;
@@ -93,26 +104,6 @@ body {
 
 /* removed old touch controls */
 
-:root {
-  --bg: #0c0f14;
-  --panel: #141a22;
-  --text: #e9edf1;
-  --accent: #4dd0e1;
-  --accent-2: #ff6b6b;
-}
-
-* { box-sizing: border-box; }
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: radial-gradient(1200px 800px at 60% -200px, #1b2430 0%, var(--bg) 60%);
-  color: var(--text);
-  font-family: 'Rubik', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  display: grid;
-  place-items: center;
-}
-
 #ui {
   position: fixed;
   top: 12px;
@@ -128,7 +119,7 @@ body {
 }
 
 .stat span { opacity: 0.7; margin-right: 4px; }
-.stat strong { color: var(--accent); }
+.stat strong { color: #ffffff; }
 
 #pauseBtn {
   margin-left: 6px;
@@ -186,7 +177,7 @@ body {
 
 @media (max-width: 560px) {
   #titleBar { margin-top: 6px; margin-bottom: 6px; }
-  #titleBar h1 { font-size: 22px; }
+  #titleBar h1 { font-size: 24px; letter-spacing: 1.5px; }
   #controlBar { width: calc(100vw - 24px); gap: 10px; }
   #game { width: calc(100vw - 24px); height: 60vh; }
 }
