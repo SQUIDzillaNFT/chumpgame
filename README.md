@@ -1,12 +1,4 @@
-Scrolling Jumper (Mobile-friendly)
-==================================
 
-HTML5 Canvas vertical scrolling jumper with left/right/jump controls, touch buttons for mobile, and zero build. Host it on GitHub Pages easily.
-
-Controls
---------
-- Keyboard: Left/Right (A/D) to move, Up/W/Space to jump, P to pause
-- Mobile: On-screen ◀ ⤒ ▶ buttons
 
 Local Run
 ---------
