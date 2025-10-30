@@ -186,8 +186,8 @@
         // Dual-mode: inside aim ring -> aim only; outside -> move toward finger
         const dx = touch.x - this.x; const dy = touch.y - this.y; const d = Math.hypot(dx, dy);
         // Larger aim ring on mobile for easier direction changes
-        const baseRing = isMobileViewport() ? this.r * 2.6 : this.r * 1.4;
-        const aimRing = Math.max(isMobileViewport() ? 32 : 16, baseRing);
+        const baseRing = isMobileViewport() ? this.r * 3.4 : this.r * 1.4;
+        const aimRing = Math.max(isMobileViewport() ? 48 : 16, baseRing);
         if (d <= aimRing) {
           // stay in place but freely rotate aim
           mx = 0; my = 0;
