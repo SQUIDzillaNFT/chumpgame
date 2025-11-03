@@ -24,23 +24,47 @@
   };
   let playerName = storage.getPlayerName();
 
-  // Firebase Leaderboard
+  // Supabase Leaderboard
   const leaderboard = {
-    submitScore: (name, score, wave) => {
-      if (!window.firebaseDb || !window.firebasePush || !window.firebaseRef) return;
+    submitScore: async (name, score, wave) => {
+      if (!window.supabaseConfig || !window.supabaseRequest) {
+        console.warn('Supabase not configured');
+        throw new Error('Supabase not configured');
+      }
+      if (window.supabaseConfig.url === 'YOUR_SUPABASE_URL' || window.supabaseConfig.anonKey === 'YOUR_SUPABASE_ANON_KEY') {
+        console.warn('Supabase not configured - please add your URL and anon key in index.html');
+        throw new Error('Supabase credentials not set');
+      }
       try {
-        const scoresRef = window.firebaseRef(window.firebaseDb, 'scores');
-        window.firebasePush(scoresRef, {
+        const result = await window.supabaseRequest('POST', 'scores', {
           name: name || 'Anonymous',
           score: score,
           wave: wave,
-          timestamp: Date.now(),
         });
-      } catch (e) { console.warn('Failed to submit score:', e); }
+        console.log('Score submitted successfully:', result);
+        return result;
+      } catch (e) {
+        console.error('Failed to submit score:', e);
+        throw e; // Re-throw so caller knows it failed
+      }
     },
     fetchTopScores: async (callback, limit = 10, retries = 3) => {
-      if (!window.firebaseDb || !window.firebaseRef || !window.firebaseQuery || !window.firebaseOrderBy || !window.firebaseLimit || !window.firebaseGet) {
-        console.warn('Firebase not initialized yet');
+      if (!window.supabaseConfig || !window.supabaseRequest) {
+        console.warn('Supabase not configured');
+        // Try to use cached scores if available
+        const cached = localStorage.getItem('chumpLeaderboardCache');
+        if (cached) {
+          try {
+            const scores = JSON.parse(cached);
+            if (callback) callback(scores);
+            return;
+          } catch (e) {}
+        }
+        if (callback) callback([]);
+        return;
+      }
+      if (window.supabaseConfig.url === 'YOUR_SUPABASE_URL' || window.supabaseConfig.anonKey === 'YOUR_SUPABASE_ANON_KEY') {
+        console.warn('Supabase not configured - please add your URL and anon key in index.html');
         // Try to use cached scores if available
         const cached = localStorage.getItem('chumpLeaderboardCache');
         if (cached) {
@@ -54,39 +78,24 @@
         return;
       }
       try {
-        const scoresRef = window.firebaseRef(window.firebaseDb, 'scores');
-        // Get more scores than needed, then sort and take top N
-        // Firebase orderBy only does ascending, so we use limitToLast to get highest scores
-        const topQuery = window.firebaseQuery(scoresRef, window.firebaseOrderBy('score'), window.firebaseLimit(limit * 2));
-        
-        // Use get() for one-time fetch with proper timeout
+        // Use fetch with timeout for Supabase REST API
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Timeout')), 5000);
         });
         
         try {
-          const snapshot = await Promise.race([
-            window.firebaseGet(topQuery),
+          const scores = await Promise.race([
+            window.supabaseRequest('GET', `scores?order=score.desc&limit=${limit}`),
             timeoutPromise
           ]);
           
-          const data = snapshot.val();
-          const scores = [];
-          if (data) {
-            for (const key in data) {
-              scores.push({ ...data[key], id: key });
-            }
-            // Sort by score descending and take top N
-            scores.sort((a, b) => b.score - a.score);
-            scores.splice(limit); // Keep only top N
-            
-            // Cache the scores for offline use
-            try {
-              localStorage.setItem('chumpLeaderboardCache', JSON.stringify(scores));
-              localStorage.setItem('chumpLeaderboardCacheTime', String(Date.now()));
-            } catch (e) {}
-          }
-          if (callback) callback(scores);
+          // Cache the scores for offline use
+          try {
+            localStorage.setItem('chumpLeaderboardCache', JSON.stringify(scores));
+            localStorage.setItem('chumpLeaderboardCacheTime', String(Date.now()));
+          } catch (e) {}
+          
+          if (callback) callback(scores || []);
         } catch (error) {
           // Timeout or other error
           if (error.message === 'Timeout') {
@@ -744,7 +753,7 @@
   }
   
   if (ui.submitScoreBtn) {
-    ui.submitScoreBtn.addEventListener('click', () => {
+    ui.submitScoreBtn.addEventListener('click', async () => {
       // Prevent multiple submissions
       if (game.scoreSubmitted) return;
       
@@ -753,18 +762,34 @@
         // Mark as submitted and disable button
         game.scoreSubmitted = true;
         ui.submitScoreBtn.disabled = true;
-        ui.submitScoreBtn.textContent = 'Submitted!';
+        ui.submitScoreBtn.textContent = 'Submitting...';
         ui.submitScoreBtn.style.opacity = '0.6';
         
         // Save name and submit score
         playerName = name;
         storage.setPlayerName(name);
-        leaderboard.submitScore(playerName, game.score, game.wave);
-        // Refresh leaderboard to show new score
+        
+        // Show loading while submitting
         leaderboard.showLoading();
-        leaderboard.fetchTopScores((scores) => {
-          leaderboard.display(scores, playerName, game.score);
-        }, 10);
+        
+        try {
+          // Wait for score to be submitted
+          await leaderboard.submitScore(playerName, game.score, game.wave);
+          
+          // Small delay to ensure database has processed the insert
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Refresh leaderboard to show new score
+          leaderboard.fetchTopScores((scores) => {
+            leaderboard.display(scores, playerName, game.score);
+            ui.submitScoreBtn.textContent = 'Submitted!';
+          }, 10);
+        } catch (error) {
+          console.error('Failed to submit score:', error);
+          ui.submitScoreBtn.textContent = 'Error - Try Again';
+          ui.submitScoreBtn.disabled = false;
+          game.scoreSubmitted = false;
+        }
       }
     });
   }

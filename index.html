@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <title>Chump Attack</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700&family=Bungee&display=swap" rel="stylesheet">
@@ -54,34 +55,48 @@
 
     
 
-    <!-- Firebase SDK -->
-    <script type="module">
-      import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-      import { getDatabase, ref, push, query, limitToLast, orderByChild, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-      
-      // Your Firebase config
-      const firebaseConfig = {
-        apiKey: "AIzaSyBQIDk91UukMQqX1FGe8aF17_VHDVAq0ug",
-        authDomain: "chumpattack.firebaseapp.com",
-        databaseURL: "https://chumpattack-default-rtdb.firebaseio.com",
-        projectId: "chumpattack",
-        storageBucket: "chumpattack.firebasestorage.app",
-        messagingSenderId: "205984989671",
-        appId: "1:205984989671:web:afc71bf78deb22dac5bd42"
+    <!-- Supabase Config -->
+    <script>
+      // Supabase configuration - Replace with your Supabase project URL and anon key
+      // Get these from: https://app.supabase.com -> Your Project -> Settings -> API
+      window.supabaseConfig = {
+        url: 'https://mjazkeqdrfpgvpnsfjgd.supabase.co',
+        anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qYXprZXFkcmZwZ3ZwbnNmamdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMDI0NDMsImV4cCI6MjA3Nzc3ODQ0M30.t03x47uDhzO_NqjTGuUZjp9R_C6GZASDW-NeaLVeSIw',
       };
       
-      // Initialize Firebase
-      const app = initializeApp(firebaseConfig);
-      const db = getDatabase(app);
-      
-      // Export to window for game.js to use
-      window.firebaseDb = db;
-      window.firebaseRef = ref;
-      window.firebasePush = push;
-      window.firebaseQuery = query;
-      window.firebaseLimit = limitToLast;
-      window.firebaseOrderBy = orderByChild;
-      window.firebaseGet = get;
+      // Helper function to make Supabase REST API calls
+      window.supabaseRequest = async (method, endpoint, body = null) => {
+        const url = `${window.supabaseConfig.url}/rest/v1/${endpoint}`;
+        const headers = {
+          'apikey': window.supabaseConfig.anonKey,
+          'Authorization': `Bearer ${window.supabaseConfig.anonKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        };
+        
+        const options = {
+          method,
+          headers,
+        };
+        
+        if (body) {
+          options.body = JSON.stringify(body);
+        }
+        
+        try {
+          const response = await fetch(url, options);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          if (method === 'GET') {
+            return await response.json();
+          }
+          return await response.json();
+        } catch (error) {
+          console.error('Supabase request failed:', error);
+          throw error;
+        }
+      };
     </script>
     <script src="src/game.js"></script>
   </body>
