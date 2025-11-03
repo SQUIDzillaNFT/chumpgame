@@ -41,11 +41,124 @@ body {
   text-align: center;
   background: radial-gradient(1000px 700px at 50% -120px, rgba(247,209,84,0.06), rgba(0,0,0,0.6));
   border-radius: 14px;
-  pointer-events: none; /* allow touches to reach canvas below */
+  pointer-events: auto; /* allow clicks on buttons */
 }
-#gameOver.hidden { display: none; }
+#gameOver.hidden { display: none !important; }
 #gameOver h2 { margin: 0 0 6px; font-size: 28px; }
 #gameOver p { margin: 0; opacity: 0.9; }
+#gameOver .personal-best { margin-top: 8px; font-size: 14px; opacity: 0.8; }
+.leaderboard {
+  margin-top: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-size: 12px;
+  -webkit-overflow-scrolling: touch; /* smooth scrolling on iOS */
+}
+.leaderboard h3 { margin: 0 0 8px; font-size: 16px; }
+#leaderboardList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.leaderboard-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 4px;
+}
+.leaderboard-item.you {
+  background: rgba(247,209,84,0.2);
+  border: 1px solid var(--banana);
+}
+.score-submit-prompt {
+  margin-top: 16px;
+  text-align: center;
+}
+.score-submit-prompt p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+.score-submit-prompt input {
+  background: rgba(10,10,10,0.8);
+  color: #ffffff;
+  border: 2px solid var(--banana);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 180px;
+  text-align: center;
+  margin-bottom: 12px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 10;
+}
+.score-submit-prompt input:focus {
+  outline: none;
+  border-color: #fff;
+}
+.gameOver-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  justify-content: center;
+}
+.gameOver-actions button {
+  background: linear-gradient(135deg, var(--banana), #ffd700);
+  color: #000;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  pointer-events: auto;
+  position: relative;
+  z-index: 10;
+}
+
+#namePrompt {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(1000px 700px at 50% -120px, rgba(30,64,255,0.3), rgba(0,0,0,0.7));
+  z-index: 1000;
+}
+#namePrompt.hidden { display: none; }
+#namePrompt h2 { margin: 0 0 16px; font-size: 24px; }
+#namePrompt input {
+  background: rgba(10,10,10,0.8);
+  color: #ffffff;
+  border: 2px solid var(--banana);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 16px;
+  font-family: inherit;
+  width: 200px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+#namePrompt input:focus {
+  outline: none;
+  border-color: #fff;
+}
+#namePrompt button {
+  background: linear-gradient(135deg, var(--banana), #ffd700);
+  color: #000;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  font-family: inherit;
+}
 
 .stat span { opacity: 0.75; margin-right: 4px; }
 .stat strong { color: #ffffff; }
@@ -180,6 +293,7 @@ body {
   #titleBar h1 { font-size: 24px; letter-spacing: 1.5px; }
   #controlBar { width: calc(100vw - 24px); gap: 10px; }
   #game { width: calc(100vw - 24px); height: 60vh; }
+  .leaderboard { max-height: 150px; font-size: 11px; }
 }
 
 /* Ensure good fit in phone landscape: make canvas fill available viewport */
@@ -187,6 +301,13 @@ body {
   #titleBar { display: none; }
   #controlBar { width: calc(100vw - 24px); margin-bottom: 6px; }
   #game { width: calc(100vw - 24px); height: calc(100vh - 100px); }
+  #gameOver:not(.hidden) {
+    display: grid !important;
+  }
+  .leaderboard {
+    max-height: 150px;
+    font-size: 11px;
+  }
 }
 
 

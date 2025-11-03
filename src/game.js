@@ -9,6 +9,145 @@
     actionBtn: document.getElementById('actionBtn'),
     gameOver: document.getElementById('gameOver'),
     finalScore: document.getElementById('finalScore'),
+    personalBest: document.getElementById('personalBest'),
+    restartFromGameOver: document.getElementById('restartFromGameOver'),
+    submitScoreBtn: document.getElementById('submitScoreBtn'),
+    scoreSubmitInput: document.getElementById('scoreSubmitInput'),
+  };
+
+  // Player name and personal best storage
+  const storage = {
+    getPlayerName: () => localStorage.getItem('chumpPlayerName') || '',
+    setPlayerName: (name) => { if (name) localStorage.setItem('chumpPlayerName', name); },
+    getPersonalBest: () => parseInt(localStorage.getItem('chumpPersonalBest') || '0', 10),
+    setPersonalBest: (score) => localStorage.setItem('chumpPersonalBest', String(score)),
+  };
+  let playerName = storage.getPlayerName();
+
+  // Firebase Leaderboard
+  const leaderboard = {
+    submitScore: (name, score, wave) => {
+      if (!window.firebaseDb || !window.firebasePush || !window.firebaseRef) return;
+      try {
+        const scoresRef = window.firebaseRef(window.firebaseDb, 'scores');
+        window.firebasePush(scoresRef, {
+          name: name || 'Anonymous',
+          score: score,
+          wave: wave,
+          timestamp: Date.now(),
+        });
+      } catch (e) { console.warn('Failed to submit score:', e); }
+    },
+    fetchTopScores: async (callback, limit = 10, retries = 3) => {
+      if (!window.firebaseDb || !window.firebaseRef || !window.firebaseQuery || !window.firebaseOrderBy || !window.firebaseLimit || !window.firebaseGet) {
+        console.warn('Firebase not initialized yet');
+        // Try to use cached scores if available
+        const cached = localStorage.getItem('chumpLeaderboardCache');
+        if (cached) {
+          try {
+            const scores = JSON.parse(cached);
+            if (callback) callback(scores);
+            return;
+          } catch (e) {}
+        }
+        if (callback) callback([]);
+        return;
+      }
+      try {
+        const scoresRef = window.firebaseRef(window.firebaseDb, 'scores');
+        // Get more scores than needed, then sort and take top N
+        // Firebase orderBy only does ascending, so we use limitToLast to get highest scores
+        const topQuery = window.firebaseQuery(scoresRef, window.firebaseOrderBy('score'), window.firebaseLimit(limit * 2));
+        
+        // Use get() for one-time fetch with proper timeout
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout')), 5000);
+        });
+        
+        try {
+          const snapshot = await Promise.race([
+            window.firebaseGet(topQuery),
+            timeoutPromise
+          ]);
+          
+          const data = snapshot.val();
+          const scores = [];
+          if (data) {
+            for (const key in data) {
+              scores.push({ ...data[key], id: key });
+            }
+            // Sort by score descending and take top N
+            scores.sort((a, b) => b.score - a.score);
+            scores.splice(limit); // Keep only top N
+            
+            // Cache the scores for offline use
+            try {
+              localStorage.setItem('chumpLeaderboardCache', JSON.stringify(scores));
+              localStorage.setItem('chumpLeaderboardCacheTime', String(Date.now()));
+            } catch (e) {}
+          }
+          if (callback) callback(scores);
+        } catch (error) {
+          // Timeout or other error
+          if (error.message === 'Timeout') {
+            console.warn('Leaderboard fetch timeout');
+          } else {
+            console.warn('Leaderboard fetch error:', error);
+          }
+          // Try to use cached scores
+          const cached = localStorage.getItem('chumpLeaderboardCache');
+          if (cached) {
+            try {
+              const scores = JSON.parse(cached);
+              if (callback) callback(scores);
+              return;
+            } catch (e) {}
+          }
+          // Retry if we have retries left
+          if (retries > 0) {
+            setTimeout(() => leaderboard.fetchTopScores(callback, limit, retries - 1), 1000);
+          } else {
+            if (callback) callback([]);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch leaderboard:', e);
+        // Try to use cached scores
+        const cached = localStorage.getItem('chumpLeaderboardCache');
+        if (cached) {
+          try {
+            const scores = JSON.parse(cached);
+            if (callback) callback(scores);
+            return;
+          } catch (e) {}
+        }
+        if (callback) callback([]);
+      }
+    },
+    showLoading: (targetList = null) => {
+      const list = targetList || document.getElementById('leaderboardList');
+      if (!list) return;
+      list.innerHTML = '<div style="opacity:0.7;padding:8px;text-align:center;">Loading leaderboard...</div>';
+    },
+    display: (scores, currentName, currentScore, targetList = null) => {
+      const list = targetList || document.getElementById('leaderboardList');
+      if (!list) {
+        console.warn('Leaderboard list element not found');
+        return;
+      }
+      list.innerHTML = '';
+      if (!scores || scores.length === 0) {
+        list.innerHTML = '<div style="opacity:0.6;padding:8px;">No scores yet!</div>';
+        return;
+      }
+      scores.forEach((entry, idx) => {
+        if (!entry || !entry.score) return; // Skip invalid entries
+        const item = document.createElement('div');
+        item.className = 'leaderboard-item' + (entry.name === currentName && entry.score === currentScore ? ' you' : '');
+        item.innerHTML = `<span>${idx + 1}. ${entry.name || 'Anonymous'}</span><span>${entry.score} (Wave ${entry.wave || 1})</span>`;
+        list.appendChild(item);
+      });
+    },
   };
 
   // Assets (optional)
@@ -24,23 +163,25 @@
   }
   function loadSfx() {
     const C = {
-      shoot: ['public/shoot.mp3','public/shoot.wav','public/gun.mp3','public/gun.wav','public/gunshot.mp3','public/gunshot.wav','public/lasergun.mp3','public/lasergun.wav','public/fire.mp3','public/fire.wav','public/banana.mp3','public/banana.wav'],
-      explosion: ['public/explosion.mp3','public/explosion.wav','public/explode.mp3','public/explode.wav','public/boom.mp3','public/boom.wav'],
-      enemyExplosion: ['public/enemyexplosion.mp3','public/enemyexplosion.wav'],
-      powerup: ['public/powerup.mp3','public/powerup.wav','public/pickup.mp3','public/pickup.wav'],
-      hurt: ['public/hurt.mp3','public/hurt.wav','public/hit.mp3','public/hit.wav','public/damage.mp3','public/damage.wav'],
-      gameover: ['public/gameover.mp3','public/gameover.wav','public/death.mp3','public/death.wav','public/lose.mp3','public/lose.wav'],
-      gamestart: ['public/gamestart.mp3','public/gamestart.wav','public/game_start.mp3','public/startgame.mp3','public/startgame.wav'],
-      playerdie: ['public/playerdie.mp3','public/playerdie.wav','public/player_die.mp3'],
+      shoot: ['public/gunshot.mp3','public/lasergun.mp3'],
+      explosion: ['public/enemyexplosion.mp3'], // Using enemyexplosion for explosion sound
+      enemyExplosion: ['public/enemyexplosion.mp3'],
+      powerup: ['public/powerup.mp3'],
+      gameover: ['public/gameover.mp3'],
+      gamestart: ['public/gamestart.mp3'],
+      playerdie: ['public/playerdie.mp3'],
+      tap: ['public/tap.wav'],
+      enhit: ['public/enhit.wav'],
     };
     sfx.map.shoot = loadAudioTry(C.shoot);
     sfx.map.explosion = loadAudioTry(C.explosion);
     sfx.map.enemyExplosion = loadAudioTry(C.enemyExplosion);
     sfx.map.powerup = loadAudioTry(C.powerup);
-    sfx.map.hurt = loadAudioTry(C.hurt);
     sfx.map.gameover = loadAudioTry(C.gameover);
     sfx.map.gamestart = loadAudioTry(C.gamestart);
     sfx.map.playerdie = loadAudioTry(C.playerdie);
+    sfx.map.tap = loadAudioTry(C.tap);
+    sfx.map.enhit = loadAudioTry(C.enhit);
     sfx.map.pickup = sfx.map.powerup;
   }
   function initAudioContext() {
@@ -203,12 +344,13 @@
     powerups: [],
     particles: [],
     hasStartedOnce: false,
+    scoreSubmitted: false,
   };
 
   class Player {
     constructor() {
       this.x = canvas.width / 2; this.y = canvas.height / 2;
-      const scale = isMobileViewport() ? 0.6 : 1;
+      const scale = isMobileViewport() ? 0.75 : 1;
       this.r = 12 * scale; this.speed = CONFIG.player.baseSpeed; this.health = CONFIG.player.maxHealth;
       this.reload = CONFIG.player.baseReload; this.reloadT = 0; this.invT = 0;
       this.speedMultiplier = 1; this.speedTimer = 0;
@@ -225,8 +367,8 @@
         // Dual-mode: inside aim ring -> aim only; outside -> move toward finger
         const dx = touch.x - this.x; const dy = touch.y - this.y; const d = Math.hypot(dx, dy);
         // Larger aim ring on mobile for easier direction changes
-        const baseRing = isMobileViewport() ? this.r * 3.4 : this.r * 1.4;
-        const aimRing = Math.max(isMobileViewport() ? 48 : 16, baseRing);
+        const baseRing = isMobileViewport() ? this.r * 4.0 : this.r * 1.4;
+        const aimRing = Math.max(isMobileViewport() ? 60 : 16, baseRing);
         if (d <= aimRing) {
           // stay in place but freely rotate aim
           mx = 0; my = 0;
@@ -261,8 +403,8 @@
     }
     draw() {
       const blink = this.invT > 0 && Math.floor(game.time * 20) % 2 === 0;
-      const face = blink ? '#ffe082' : '#f4e3c1';
-      const body = blink ? '#ffe082' : '#a67c52';
+      const face = blink ? '#ffffff' : '#f4e3c1';
+      const body = blink ? '#ffffff' : '#a67c52';
       ctx.save();
       ctx.translate(this.x, this.y);
       ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
@@ -280,7 +422,28 @@
         const w = this.r * 2.5;
         const aspect = assets.chump.height / assets.chump.width;
         const h = w * aspect;
+        // Flash white glow when hit
+        if (blink) {
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 25;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        }
         ctx.drawImage(assets.chump, -w/2, -h/2, w, h);
+        // Add white circular glow when hit (bigger than enemies)
+        if (blink) {
+          ctx.globalCompositeOperation = 'screen';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          const glowRadius = this.r * 1.8; // Bigger than enemy flash (enemies use r*1.0-1.2)
+          ctx.beginPath();
+          ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        // Reset shadow for next draw
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
       } else {
         // tail
         ctx.strokeStyle = body; ctx.lineWidth = 4; ctx.beginPath();
@@ -296,6 +459,16 @@
         ctx.fillStyle = face; ctx.beginPath(); ctx.arc(0, this.r*0.2, this.r*0.7, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#0b1020';
         ctx.beginPath(); ctx.arc(-this.r*0.25, -this.r*0.15, 2, 0, Math.PI*2); ctx.arc(this.r*0.25, -this.r*0.15, 2, 0, Math.PI*2); ctx.fill();
+        // Add white circular glow when hit (bigger than enemies)
+        if (blink) {
+          ctx.globalCompositeOperation = 'screen';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          const glowRadius = this.r * 1.8; // Bigger than enemy flash
+          ctx.beginPath();
+          ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+        }
       }
       ctx.restore();
     }
@@ -340,7 +513,7 @@
       else if(e===1){ this.x=vw()+m; this.y=Math.random()*vh(); }
       else if(e===2){ this.x=Math.random()*vw(); this.y=-m; }
       else { this.x=Math.random()*vw(); this.y=vh()+m; }
-      this.s=speed; this.r=r * scale; this.hp=hp; this.flash=0;
+      this.s=speed; this.r=r * scale; this.hp=hp; this.flash=0; this.dead=false;
       const kinds = ['grunt','runner','tank'];
       this.kind = kinds[Math.floor(Math.random()*kinds.length)];
       // Choose sprite by kind mapping if available
@@ -352,7 +525,17 @@
     draw(){
       ctx.save();
       ctx.translate(this.x, this.y);
-      ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+      // Flash red glow when hit (apply before drawing)
+      if (this.flash > 0) {
+        ctx.shadowColor = '#ff4444';
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 2;
+      }
       if (this.sprite) {
         // Draw sprite scaled around radius; rotate toward player
         ctx.rotate(this.angle);
@@ -360,9 +543,16 @@
         const aspect = this.sprite.height / this.sprite.width;
         const h = w * aspect;
         ctx.drawImage(this.sprite, -w/2, -h/2, w, h);
+        // Add red overlay when hit (more visible)
+        if (this.flash > 0) {
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.fillStyle = 'rgba(255, 68, 68, 0.6)';
+          ctx.fillRect(-w/2, -h/2, w, h);
+          ctx.globalCompositeOperation = 'source-over';
+        }
       } else {
         // Fallback vector styles
-        const base = this.flash>0 ? '#ffcdd2' : '#ff6b6b';
+        const base = this.flash>0 ? '#ff4444' : '#ff6b6b';
         if (this.kind === 'grunt') {
           const s = this.r * 1.6;
           ctx.fillStyle = base;
@@ -458,14 +648,14 @@
       const b=game.bullets[i];
       for (let j=game.enemies.length-1;j>=0;j--){
         const e=game.enemies[j]; const rs=b.r+e.r;
-        if (dist2(b.x,b.y,e.x,e.y) <= rs*rs){ game.bullets.splice(i,1); e.hp -= 1; e.flash = 0.1; if (e.hp<=0){ game.enemies.splice(j,1); game.score += 10; maybeDropPowerUp(e.x, e.y); spawnExplosion(e.x, e.y, { r:255, g:107, b:107 }); playSfx('enemyExplosion', { volume: 0.8 }); } break; }
+        if (dist2(b.x,b.y,e.x,e.y) <= rs*rs){ game.bullets.splice(i,1); e.hp -= 1; e.flash = 0.2; playSfx('enhit', { volume: 0.6 }); if (e.hp<=0){ e.dead = true; game.score += 10; maybeDropPowerUp(e.x, e.y); spawnExplosion(e.x, e.y, { r:255, g:107, b:107 }); playSfx('enemyExplosion', { volume: 0.8 }); } break; }
       }
     }
     // enemies vs player
     for (let i=game.enemies.length-1;i>=0;i--){
       const e=game.enemies[i]; const rs=e.r+game.player.r;
       if (dist2(e.x,e.y,game.player.x,game.player.y) <= rs*rs){
-        if (game.player.invT <= 0){ game.player.health -= 15; game.player.invT = 0.8; playSfx('hurt', { volume: 0.7 }); if (game.player.health <= 0) return endGame(); }
+        if (game.player.invT <= 0){ game.player.health -= 15; game.player.invT = 0.8; playSfx('tap', { volume: 0.7 }); if (game.player.health <= 0) return endGame(); }
       }
     }
 
@@ -486,7 +676,7 @@
   function updateUI(){ if (ui.score) ui.score.textContent = String(game.score); if (ui.wave) ui.wave.textContent = String(game.wave); if (ui.health) ui.health.textContent = String(Math.max(0, Math.floor(game.player?.health ?? 0))); }
 
   function startGame(){
-    game.running=true; game.paused=false; game.score=0; game.wave=1; game.time=0; game.lastTs=0; game.bullets=[]; game.enemies=[]; game.powerups=[]; game.particles=[]; game.player=new Player(); spawnWave(game.wave); game.hasStartedOnce=true; if (ui.actionBtn) ui.actionBtn.textContent='Pause'; updateUI();
+    game.running=true; game.paused=false; game.score=0; game.wave=1; game.time=0; game.lastTs=0; game.bullets=[]; game.enemies=[]; game.powerups=[]; game.particles=[]; game.player=new Player(); spawnWave(game.wave); game.hasStartedOnce=true; game.scoreSubmitted=false; if (ui.actionBtn) ui.actionBtn.textContent='Pause'; updateUI();
     if (ui.gameOver) ui.gameOver.classList.add('hidden');
     playSfx('gamestart', { volume: 0.6 });
   }
@@ -495,6 +685,43 @@
     if (ui.actionBtn) ui.actionBtn.textContent='Restart';
     if (ui.finalScore) ui.finalScore.textContent = String(game.score);
     if (ui.gameOver) ui.gameOver.classList.remove('hidden');
+    
+    // Reset submit button for new game
+    if (ui.submitScoreBtn) {
+      ui.submitScoreBtn.disabled = false;
+      ui.submitScoreBtn.textContent = 'Submit Score';
+      ui.submitScoreBtn.style.opacity = '1';
+    }
+    game.scoreSubmitted = false;
+    
+    // Load saved name into input if available
+    if (ui.scoreSubmitInput) {
+      ui.scoreSubmitInput.value = playerName || '';
+      ui.scoreSubmitInput.focus();
+    }
+    
+    // Check and update personal best
+    const currentBest = storage.getPersonalBest();
+    const finalScore = game.score;
+    if (finalScore > currentBest) {
+      storage.setPersonalBest(finalScore);
+      if (ui.personalBest) {
+        ui.personalBest.textContent = `🎉 New Personal Best! ${finalScore} (was ${currentBest})`;
+      }
+    } else if (currentBest > 0) {
+      if (ui.personalBest) {
+        ui.personalBest.textContent = `Personal Best: ${currentBest}`;
+      }
+    } else {
+      if (ui.personalBest) ui.personalBest.textContent = '';
+    }
+    
+    // Fetch and display leaderboard (but don't submit score yet)
+    leaderboard.showLoading();
+    leaderboard.fetchTopScores((scores) => {
+      leaderboard.display(scores, '', finalScore);
+    }, 10);
+    
     // Player death cue, explosion + optional game over jingle
     playSfx('playerdie', { volume: 0.7 });
     playSfx('explosion', { volume: 0.8 });
@@ -502,11 +729,53 @@
   }
   function togglePause(){ if (!game.running) return; game.paused=!game.paused; if (ui.actionBtn) ui.actionBtn.textContent = game.paused ? 'Resume' : 'Pause'; }
 
-  function update(dt){ if (!game.running || game.paused) return; game.player.update(dt); for (let i=game.bullets.length-1;i>=0;i--){ const b=game.bullets[i]; b.update(dt); if (b.off()) game.bullets.splice(i,1);} for (const e of game.enemies) e.update(dt); for (const p of game.powerups) p.update(dt); for (let i=game.particles.length-1;i>=0;i--){ const pr=game.particles[i]; pr.update(dt); if (pr.life<=0) game.particles.splice(i,1);} collisions(); if (game.enemies.length===0){ game.wave+=1; spawnWave(game.wave);} updateUI(); }
+  function update(dt){ if (!game.running || game.paused) return; for (let i=game.enemies.length-1;i>=0;i--){ if (game.enemies[i].dead) game.enemies.splice(i,1);} game.player.update(dt); for (let i=game.bullets.length-1;i>=0;i--){ const b=game.bullets[i]; b.update(dt); if (b.off()) game.bullets.splice(i,1);} for (const e of game.enemies) e.update(dt); for (const p of game.powerups) p.update(dt); for (let i=game.particles.length-1;i>=0;i--){ const pr=game.particles[i]; pr.update(dt); if (pr.life<=0) game.particles.splice(i,1);} collisions(); if (game.enemies.length===0){ game.wave+=1; spawnWave(game.wave);} updateUI(); }
   function drawGrid(){ ctx.save(); ctx.strokeStyle='rgba(247,209,84,0.08)'; ctx.lineWidth=1; const step=40; for(let x=0;x<=vw();x+=step){ ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,vh()); ctx.stroke(); } for(let y=0;y<=vh();y+=step){ ctx.beginPath(); ctx.moveTo(0,y+0.5); ctx.lineTo(vw(),y+0.5); ctx.stroke(); } ctx.restore(); }
   function roundedRect(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r,y); c.lineTo(x+w-r,y); c.quadraticCurveTo(x+w,y,x+w,y+r); c.lineTo(x+w,y+h-r); c.quadraticCurveTo(x+w,y+h,x+w-r,y+h); c.lineTo(x+r,y+h); c.quadraticCurveTo(x,y+h,x,y+h-r); c.lineTo(x,y+r); c.quadraticCurveTo(x,y,x+r,y); }
   function render(){ ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight); drawGrid(); for (const b of game.bullets) b.draw(); for(const e of game.enemies) e.draw(); for (const p of game.powerups) p.draw(); for (const pr of game.particles) pr.draw(); if (game.player) game.player.draw(); }
   function loop(ts){ const dt = Math.min(0.033, (ts - (game.lastTs||ts))/1000); game.lastTs=ts; if (!game.paused) game.time += dt; update(dt); render(); requestAnimationFrame(loop); }
+
+  // Game over button handlers
+  if (ui.restartFromGameOver) {
+    ui.restartFromGameOver.addEventListener('click', () => {
+      // Just restart, don't submit score
+      startGame();
+    });
+  }
+  
+  if (ui.submitScoreBtn) {
+    ui.submitScoreBtn.addEventListener('click', () => {
+      // Prevent multiple submissions
+      if (game.scoreSubmitted) return;
+      
+      const name = (ui.scoreSubmitInput?.value || '').trim();
+      if (name && game.score > 0) {
+        // Mark as submitted and disable button
+        game.scoreSubmitted = true;
+        ui.submitScoreBtn.disabled = true;
+        ui.submitScoreBtn.textContent = 'Submitted!';
+        ui.submitScoreBtn.style.opacity = '0.6';
+        
+        // Save name and submit score
+        playerName = name;
+        storage.setPlayerName(name);
+        leaderboard.submitScore(playerName, game.score, game.wave);
+        // Refresh leaderboard to show new score
+        leaderboard.showLoading();
+        leaderboard.fetchTopScores((scores) => {
+          leaderboard.display(scores, playerName, game.score);
+        }, 10);
+      }
+    });
+  }
+  
+  if (ui.scoreSubmitInput) {
+    ui.scoreSubmitInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && ui.submitScoreBtn) {
+        ui.submitScoreBtn.click();
+      }
+    });
+  }
 
   if (ui.actionBtn){ ui.actionBtn.addEventListener('click', () => { unlockAudio(); if (!game.hasStartedOnce) return startGame(); if (!game.running) return startGame(); togglePause(); }); }
   document.addEventListener('pointerdown', unlockAudio, { passive: true });
@@ -515,320 +784,5 @@
   requestAnimationFrame(loop);
 })();
 
-(() => {
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-
-  const uiScore = document.getElementById('score');
-  const uiWave = document.getElementById('wave');
-  const uiHealth = document.getElementById('health');
-  const overlay = document.getElementById('overlay');
-  const startBtn = document.getElementById('startBtn');
-  const restartBtn = document.getElementById('restartBtn');
-  const overlayTitle = document.getElementById('overlayTitle');
-  const overlaySubtitle = document.getElementById('overlaySubtitle');
-  const pauseBtn = document.getElementById('pauseBtn');
-
-  // Coordinate helpers
-  function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
-  function distanceSquared(ax, ay, bx, by) { const dx = ax - bx; const dy = ay - by; return dx*dx + dy*dy; }
-  function angleBetween(ax, ay, bx, by) { return Math.atan2(by - ay, bx - ax); }
-
-  // Input
-  const keys = new Set();
-  const mouse = { x: canvas.width / 2, y: canvas.height / 2, down: false };
-  window.addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); if (e.key === ' ') e.preventDefault(); });
-  window.addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); });
-  canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    mouse.x = (e.clientX - rect.left) * scaleX;
-    mouse.y = (e.clientY - rect.top) * scaleY;
-  });
-  canvas.addEventListener('mousedown', () => { mouse.down = true; });
-  window.addEventListener('mouseup', () => { mouse.down = false; });
-
-  // Game state
-  const game = {
-    running: false,
-    paused: false,
-    score: 0,
-    wave: 1,
-    time: 0,
-    lastTimestamp: 0,
-    player: null,
-    bullets: [],
-    enemies: [],
-    particles: [],
-  };
-
-  // Entities
-  class Player {
-    constructor() {
-      this.positionX = canvas.width / 2;
-      this.positionY = canvas.height / 2;
-      this.radius = 14;
-      this.moveSpeed = 230; // px/s
-      this.health = 100;
-      this.invincibleTimer = 0; // seconds
-      this.reloadDelay = 0.14; // seconds between shots
-      this.reloadTimer = 0;
-    }
-    update(dt) {
-      let moveX = 0; let moveY = 0;
-      if (keys.has('w') || keys.has('arrowup')) moveY -= 1;
-      if (keys.has('s') || keys.has('arrowdown')) moveY += 1;
-      if (keys.has('a') || keys.has('arrowleft')) moveX -= 1;
-      if (keys.has('d') || keys.has('arrowright')) moveX += 1;
-      if (moveX !== 0 || moveY !== 0) {
-        const len = Math.hypot(moveX, moveY);
-        moveX /= len; moveY /= len;
-      }
-      this.positionX = clamp(this.positionX + moveX * this.moveSpeed * dt, this.radius, canvas.width - this.radius);
-      this.positionY = clamp(this.positionY + moveY * this.moveSpeed * dt, this.radius, canvas.height - this.radius);
-
-      this.reloadTimer -= dt;
-      if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
-
-      // Auto fire with mouse or Space
-      if ((mouse.down || keys.has(' ')) && this.reloadTimer <= 0) {
-        this.reloadTimer = this.reloadDelay;
-        const theta = angleBetween(this.positionX, this.positionY, mouse.x, mouse.y);
-        spawnBullet(this.positionX, this.positionY, theta);
-      }
-    }
-    draw() {
-      const isHurtBlink = this.invincibleTimer > 0 && Math.floor(game.time * 20) % 2 === 0;
-      ctx.save();
-      ctx.translate(this.positionX, this.positionY);
-      // Body
-      ctx.fillStyle = isHurtBlink ? '#ffe082' : '#4dd0e1';
-      ctx.beginPath();
-      ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-      ctx.fill();
-      // Gun direction
-      const theta = angleBetween(this.positionX, this.positionY, mouse.x, mouse.y);
-      ctx.rotate(theta);
-      ctx.fillStyle = '#b2ebf2';
-      ctx.fillRect(0, -4, this.radius + 10, 8);
-      ctx.restore();
-    }
-  }
-
-  class Bullet {
-    constructor(x, y, angle) {
-      this.positionX = x;
-      this.positionY = y;
-      this.velocityX = Math.cos(angle) * 520;
-      this.velocityY = Math.sin(angle) * 520;
-      this.radius = 4;
-      this.life = 1.2; // seconds
-    }
-    update(dt) {
-      this.positionX += this.velocityX * dt;
-      this.positionY += this.velocityY * dt;
-      this.life -= dt;
-    }
-    isOffscreen() {
-      return this.positionX < -10 || this.positionX > canvas.width + 10 || this.positionY < -10 || this.positionY > canvas.height + 10 || this.life <= 0;
-    }
-    draw() {
-      ctx.fillStyle = '#e3f2fd';
-      ctx.beginPath();
-      ctx.arc(this.positionX, this.positionY, this.radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  class Enemy {
-    constructor(speed, radius, health) {
-      const edge = Math.floor(Math.random() * 4);
-      const margin = 20;
-      if (edge === 0) { this.positionX = -margin; this.positionY = Math.random() * canvas.height; }
-      else if (edge === 1) { this.positionX = canvas.width + margin; this.positionY = Math.random() * canvas.height; }
-      else if (edge === 2) { this.positionX = Math.random() * canvas.width; this.positionY = -margin; }
-      else { this.positionX = Math.random() * canvas.width; this.positionY = canvas.height + margin; }
-      this.speed = speed;
-      this.radius = radius;
-      this.health = health;
-      this.hitFlash = 0;
-    }
-    update(dt) {
-      const angleToPlayer = angleBetween(this.positionX, this.positionY, game.player.positionX, game.player.positionY);
-      const velX = Math.cos(angleToPlayer) * this.speed;
-      const velY = Math.sin(angleToPlayer) * this.speed;
-      this.positionX += velX * dt;
-      this.positionY += velY * dt;
-      if (this.hitFlash > 0) this.hitFlash -= dt;
-    }
-    draw() {
-      ctx.fillStyle = this.hitFlash > 0 ? '#ffcdd2' : '#ff6b6b';
-      ctx.beginPath();
-      ctx.arc(this.positionX, this.positionY, this.radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Spawners and effects
-  function spawnBullet(x, y, angle) {
-    const muzzleX = x + Math.cos(angle) * 18;
-    const muzzleY = y + Math.sin(angle) * 18;
-    game.bullets.push(new Bullet(muzzleX, muzzleY, angle));
-  }
-
-  function spawnEnemyWave(waveNumber) {
-    const baseCount = 6 + Math.floor(waveNumber * 1.5);
-    const enemiesToSpawn = baseCount;
-    for (let i = 0; i < enemiesToSpawn; i++) {
-      const speed = 60 + waveNumber * 5 + Math.random() * 25;
-      const radius = clamp(12 - Math.floor(waveNumber / 4), 6, 12);
-      const health = 1 + Math.floor(waveNumber / 4);
-      game.enemies.push(new Enemy(speed, radius, health));
-    }
-  }
-
-  // Collision and game logic
-  function handleCollisions() {
-    // Bullets vs Enemies
-    for (let i = game.bullets.length - 1; i >= 0; i--) {
-      const bullet = game.bullets[i];
-      for (let j = game.enemies.length - 1; j >= 0; j--) {
-        const enemy = game.enemies[j];
-        const rs = bullet.radius + enemy.radius;
-        if (distanceSquared(bullet.positionX, bullet.positionY, enemy.positionX, enemy.positionY) <= rs * rs) {
-          game.bullets.splice(i, 1);
-          enemy.health -= 1;
-          enemy.hitFlash = 0.1;
-          if (enemy.health <= 0) {
-            game.enemies.splice(j, 1);
-            game.score += 10;
-          }
-          break;
-        }
-      }
-    }
-
-    // Enemies vs Player
-    for (let i = game.enemies.length - 1; i >= 0; i--) {
-      const enemy = game.enemies[i];
-      const rs = enemy.radius + game.player.radius;
-      if (distanceSquared(enemy.positionX, enemy.positionY, game.player.positionX, game.player.positionY) <= rs * rs) {
-        if (game.player.invincibleTimer <= 0) {
-          game.player.health -= 15;
-          game.player.invincibleTimer = 0.8;
-          if (game.player.health <= 0) {
-            endGame();
-          }
-        }
-      }
-    }
-  }
-
-  // UI/state helpers
-  function updateUI() {
-    uiScore.textContent = String(game.score);
-    uiWave.textContent = String(game.wave);
-    uiHealth.textContent = String(Math.max(0, Math.floor(game.player?.health ?? 0)));
-  }
-
-  function startGame() {
-    game.running = true;
-    game.paused = false;
-    game.score = 0;
-    game.wave = 1;
-    game.time = 0;
-    game.lastTimestamp = 0;
-    game.bullets = [];
-    game.enemies = [];
-    game.particles = [];
-    game.player = new Player();
-    spawnEnemyWave(game.wave);
-    overlay.classList.add('hidden');
-    restartBtn.classList.add('hidden');
-  }
-
-  function endGame() {
-    game.running = false;
-    overlay.classList.remove('hidden');
-    restartBtn.classList.remove('hidden');
-    overlayTitle.textContent = 'Game Over';
-    overlaySubtitle.textContent = `Final Score: ${game.score} — Wave ${game.wave}`;
-  }
-
-  function togglePause() {
-    if (!game.running) return;
-    game.paused = !game.paused;
-    pauseBtn.textContent = game.paused ? 'Resume' : 'Pause';
-  }
-
-  // Main loop
-  function update(dt) {
-    if (!game.running || game.paused) return;
-
-    game.player.update(dt);
-
-    for (let i = game.bullets.length - 1; i >= 0; i--) {
-      const b = game.bullets[i];
-      b.update(dt);
-      if (b.isOffscreen()) game.bullets.splice(i, 1);
-    }
-
-    for (let i = game.enemies.length - 1; i >= 0; i--) {
-      const e = game.enemies[i];
-      e.update(dt);
-    }
-
-    handleCollisions();
-
-    // Wave cleared
-    if (game.enemies.length === 0) {
-      game.wave += 1;
-      spawnEnemyWave(game.wave);
-    }
-
-    updateUI();
-  }
-
-  function drawGrid() {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-    ctx.lineWidth = 1;
-    const step = 40;
-    for (let x = 0; x <= canvas.width; x += step) {
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, canvas.height); ctx.stroke();
-    }
-    for (let y = 0; y <= canvas.height; y += step) {
-      ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(canvas.width, y + 0.5); ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawGrid();
-    for (const b of game.bullets) b.draw();
-    for (const e of game.enemies) e.draw();
-    if (game.player) game.player.draw();
-  }
-
-  function loop(ts) {
-    const dt = Math.min(0.033, (ts - (game.lastTimestamp || ts)) / 1000);
-    game.lastTimestamp = ts;
-    if (!game.paused) game.time += dt;
-    update(dt);
-    render();
-    requestAnimationFrame(loop);
-  }
-
-  // UI bindings
-  startBtn.addEventListener('click', startGame);
-  restartBtn.addEventListener('click', startGame);
-  pauseBtn.addEventListener('click', togglePause);
-  window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'p') togglePause(); });
-
-  // Kick off loop
-  requestAnimationFrame(loop);
-})();
 
 

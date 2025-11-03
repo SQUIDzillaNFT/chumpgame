@@ -28,13 +28,61 @@
       <div id="gameOver" class="hidden">
         <h2>Game Over!</h2>
         <p>Score: <span id="finalScore">0</span></p>
+        <p id="personalBest" class="personal-best"></p>
+        <div id="leaderboard" class="leaderboard">
+          <h3>Top Scores</h3>
+          <div id="leaderboardList"></div>
+        </div>
+        <div id="scoreSubmitPrompt" class="score-submit-prompt">
+          <p>Enter your name to submit score:</p>
+          <input type="text" id="scoreSubmitInput" placeholder="Your name" maxlength="20" />
+          <div class="gameOver-actions">
+            <button id="submitScoreBtn">Submit Score</button>
+            <button id="restartFromGameOver">Restart</button>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <div id="namePrompt" class="overlay-prompt hidden">
+      <h2>Enter Your Name</h2>
+      <input type="text" id="playerNameInput" placeholder="Your name" maxlength="20" />
+      <button id="nameSubmit">Start Playing</button>
     </div>
 
     
 
     
 
+    <!-- Firebase SDK -->
+    <script type="module">
+      import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+      import { getDatabase, ref, push, query, limitToLast, orderByChild, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+      
+      // Your Firebase config
+      const firebaseConfig = {
+        apiKey: "AIzaSyBQIDk91UukMQqX1FGe8aF17_VHDVAq0ug",
+        authDomain: "chumpattack.firebaseapp.com",
+        databaseURL: "https://chumpattack-default-rtdb.firebaseio.com",
+        projectId: "chumpattack",
+        storageBucket: "chumpattack.firebasestorage.app",
+        messagingSenderId: "205984989671",
+        appId: "1:205984989671:web:afc71bf78deb22dac5bd42"
+      };
+      
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+      
+      // Export to window for game.js to use
+      window.firebaseDb = db;
+      window.firebaseRef = ref;
+      window.firebasePush = push;
+      window.firebaseQuery = query;
+      window.firebaseLimit = limitToLast;
+      window.firebaseOrderBy = orderByChild;
+      window.firebaseGet = get;
+    </script>
     <script src="src/game.js"></script>
   </body>
   </html>
